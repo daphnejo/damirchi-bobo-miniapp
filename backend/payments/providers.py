@@ -501,6 +501,20 @@ def _expire_payme_transaction_if_needed(tx: PaymentTransaction) -> None:
     mark_order_payment_status(tx.order, Order.PaymentStatus.CANCELLED)
 
 
+def _payme_duplicate_transaction_error(request_id):
+    account_field = str(getattr(settings, "PAYME_ACCOUNT_FIELD", "order_id")).strip() or "order_id"
+    return payme_error(
+        request_id,
+        -31099,
+        payme_message(
+            "Ushbu buyurtma bo‘yicha boshqa tranzaksiya jarayonda.",
+            "По данному заказу уже выполняется другая транзакция.",
+            "Another transaction for this order is already in progress.",
+        ),
+        f"account.{account_field}",
+    )
+
+
 def handle_payme_rpc(payload: dict) -> dict:
     request_id = payload.get("id")
     method = payload.get("method")
@@ -591,7 +605,7 @@ def handle_payme_rpc(payload: dict) -> dict:
         if active:
             _expire_payme_transaction_if_needed(active)
             if active.provider_state == 1:
-                return _payme_operation_error(request_id)
+                return _payme_duplicate_transaction_error(request_id)
 
         if order.payment_status == Order.PaymentStatus.PAID:
             return _payme_operation_error(request_id)
